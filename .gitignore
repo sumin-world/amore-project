@@ -1,0 +1,21 @@
+# 1. 파이썬 필수 제외
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# 2. 보안 파일 제외
+.env
+api_key.txt
+secrets.json
+
+# 3. 데이터 및 로그 제외
+/data/*.xlsx
+*.log
+logs/
+
+# 4. 시스템 파일 제외
+.DS_Store
+.vscode/
+chromedriver
