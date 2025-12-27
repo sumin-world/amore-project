@@ -1,5 +1,6 @@
-selenium
-webdriver-manager
-pandas
-openpyxl
-openai
+selenium==4.27.1
+beautifulsoup4==4.12.3
+lxml==5.3.0
+pandas==2.2.3
+streamlit==1.41.1
+python-dotenv==1.0.1

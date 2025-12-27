@@ -1,21 +1,31 @@
-# 1. 파이썬 필수 제외
+# Secrets
+.env
+.env.*
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
 .venv/
 venv/
-env/
 
-# 2. 보안 파일 제외
-.env
-api_key.txt
-secrets.json
-
-# 3. 데이터 및 로그 제외
-/data/*.xlsx
-*.log
-logs/
-
-# 4. 시스템 파일 제외
+# OS / Editor
 .DS_Store
+.idea/
 .vscode/
-chromedriver
+*.swp
+
+# Runtime outputs (must NOT be committed)
+data/
+logs/
+reports/
+snapshots/
+
+# Streamlit
+.streamlit/
+
+# Docker
+*.log
