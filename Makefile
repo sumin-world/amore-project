@@ -5,7 +5,7 @@ LOCAL_GID := $(shell id -g)
 
 DC := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) docker compose -f compose.yml
 
-.PHONY: help doctor up run down ps logs clean reset fix-perms
+.PHONY: help doctor up run down ps logs clean reset fix-perms task
 
 help:
 	@echo "Targets:"
@@ -18,6 +18,7 @@ help:
 	@echo "  make clean    - 로컬 산출물 정리(data/reports/logs/snapshots)"
 	@echo "  make reset    - down + clean + 이미지 포함 강제 초기화(주의)"
 	@echo "  make fix-perms- (리눅스) root로 찍힌 파일 권한 복구"
+	@echo "  make task m=src.mod - 임의 모듈 1회 실행(예: src.utils.foo)"
 
 doctor:
 	@./scripts/doctor.sh
@@ -61,3 +62,6 @@ fix-perms:
 	@echo "[INFO] Fixing file ownership under data/logs/reports/snapshots/src (may require sudo)."
 	@sudo chown -R $(shell id -un):$(shell id -gn) data logs reports snapshots src || true
 	@echo "[OK] Done."
+# [사용법] make task m=src.new_task
+task:
+	@$(DC) run --rm app python -m $(m)
