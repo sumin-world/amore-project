@@ -1,31 +1,12 @@
-# Secrets
 .env
-.env.*
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-.mypy_cache/
-.venv/
-venv/
-
-# OS / Editor
-.DS_Store
-.idea/
-.vscode/
-*.swp
-
-# Runtime outputs (must NOT be committed)
 data/
 logs/
 reports/
 snapshots/
 
-# Streamlit
-.streamlit/
+__pycache__/
+*.pyc
 
-# Docker
-*.log
+.venv/
+venv/

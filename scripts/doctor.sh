@@ -1,128 +1,76 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMPOSE_FILE="compose.yml"
-PORT="8501"
+echo "== Amore Project Doctor =="
 
-say() { printf "%s\n" "$*"; }
-ok()  { say "[OK] $*"; }
-warn(){ say "[WARN] $*"; }
-bad() { say "[FAIL] $*"; }
-
-need_cmd() {
-  if command -v "$1" >/dev/null 2>&1; then
-    ok "found: $1"
+need_files=("compose.yml" "docker/Dockerfile" "requirements.txt")
+for f in "${need_files[@]}"; do
+  if [[ -f "$f" ]]; then
+    echo "[OK] found: $f"
   else
-    bad "missing: $1"
-    return 1
+    echo "[FAIL] missing: $f"
+    exit 1
   fi
-}
+done
 
-check_port_in_use() {
-  local p="$1"
-  # Try lsof (mac/linux)
-  if command -v lsof >/dev/null 2>&1; then
-    if lsof -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
-      return 0
-    else
-      return 1
-    fi
+need_dirs=("docker" "src" "data" "logs" "reports" "snapshots" "scripts")
+for d in "${need_dirs[@]}"; do
+  if [[ -d "$d" ]]; then
+    echo "[OK] found dir: $d"
+  else
+    echo "[INFO] creating dir: $d"
+    mkdir -p "$d"
   fi
+done
 
-  # Try ss (linux)
-  if command -v ss >/dev/null 2>&1; then
-    if ss -ltn | awk '{print $4}' | grep -E "(:|\\.)${p}\$" >/dev/null 2>&1; then
-      return 0
-    else
-      return 1
-    fi
-  fi
-
-  # Try netstat (fallback)
-  if command -v netstat >/dev/null 2>&1; then
-    if netstat -an 2>/dev/null | grep -E "LISTEN" | grep -E "[:.]${p}[[:space:]]" >/dev/null 2>&1; then
-      return 0
-    else
-      return 1
-    fi
-  fi
-
-  warn "cannot check port usage (no lsof/ss/netstat). skipping port check."
-  return 2
-}
-
-say "== Amore Project Doctor =="
-say ""
-
-# 1) Basic files
-if [[ -f "$COMPOSE_FILE" ]]; then ok "found: $COMPOSE_FILE"; else bad "missing: $COMPOSE_FILE"; exit 1; fi
-if [[ -f "docker/Dockerfile" ]]; then ok "found: docker/Dockerfile"; else bad "missing: docker/Dockerfile"; exit 1; fi
-if [[ -f "requirements.txt" ]]; then ok "found: requirements.txt"; else bad "missing: requirements.txt"; exit 1; fi
-
-# 2) Docker presence
-need_cmd docker
-
-# 3) Docker daemon running?
 if docker info >/dev/null 2>&1; then
-  ok "docker daemon is reachable"
+  echo "[OK] docker daemon is reachable"
 else
-  bad "docker daemon is NOT reachable"
-  say "Fix:"
-  say "  - Mac/Windows: Docker Desktop 실행"
-  say "  - Linux: sudo systemctl start docker"
+  echo "[FAIL] docker daemon not reachable. Start Docker Desktop (Mac/Win) or docker service (Linux)."
   exit 1
 fi
 
-# 4) Compose availability
-# docker compose is preferred
 if docker compose version >/dev/null 2>&1; then
-  ok "docker compose is available"
+  echo "[OK] docker compose is available"
 else
-  bad "docker compose is not available"
-  say "Fix:"
-  say "  - Docker Desktop 최신 버전 설치"
-  say "  - Linux: docker-compose-plugin 설치"
+  echo "[FAIL] docker compose not available"
   exit 1
 fi
 
-# 5) Permission sanity (Linux only: docker group)
-OS="$(uname -s || true)"
-if [[ "$OS" == "Linux" ]]; then
-  # Try a harmless command without sudo
-  if docker ps >/dev/null 2>&1; then
-    ok "docker permission looks OK (no sudo needed)"
+if docker ps >/dev/null 2>&1; then
+  echo "[OK] docker permission looks OK (no sudo needed)"
+else
+  echo "[WARN] docker permission may require sudo (Linux)."
+  echo "      Fix: sudo usermod -aG docker \$USER && newgrp docker"
+fi
+
+if command -v lsof >/dev/null 2>&1; then
+  if lsof -iTCP:8501 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "[FAIL] port 8501 is already in use."
+    echo "       Fix: make down"
+    exit 1
   else
-    warn "docker ps failed without sudo (permission issue possible)"
-    say "Fix (Linux):"
-    say "  sudo usermod -aG docker \$USER"
-    say "  newgrp docker"
+    echo "[OK] port 8501 is free"
+  fi
+else
+  echo "[INFO] lsof not found. Skipping port check."
+fi
+
+if [[ -f ".env" ]]; then
+  echo "[OK] found: .env"
+else
+  if [[ -f ".env.example" ]]; then
+    cp .env.example .env
+    echo "[INFO] created .env from .env.example (edit if needed)"
+  else
+    echo "[WARN] .env.example not found. Create .env manually if needed."
   fi
 fi
 
-# 6) Port check
-res=0
-set +e
-check_port_in_use "$PORT"
-res=$?
-set -e
-
-if [[ $res -eq 0 ]]; then
-  warn "port $PORT seems already in use"
-  say "Fix:"
-  say "  - run: ./scripts/down.sh"
-  say "  - or change port mapping in compose.yml"
-elif [[ $res -eq 1 ]]; then
-  ok "port $PORT is free"
-else
-  # 2: skipped
-  :
-fi
-
-# 7) Quick project run suggestion
-say ""
-say "Next steps:"
-say "  make up"
-say "  make run"
-say "  open http://localhost:${PORT}"
-say ""
-ok "doctor checks completed"
+echo ""
+echo "Next steps:"
+echo "  make up"
+echo "  make run"
+echo "  open http://localhost:8501"
+echo ""
+echo "[OK] doctor checks completed"

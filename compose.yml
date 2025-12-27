@@ -5,8 +5,9 @@ services:
       dockerfile: docker/Dockerfile
     working_dir: /app
     env_file: .env
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
-      - PYTHONDONTWRITEBYTECODE=1
+      - HOME=/tmp
     volumes:
       - ./src:/app/src
       - ./data:/data
@@ -22,12 +23,14 @@ services:
       dockerfile: docker/Dockerfile
     working_dir: /app
     env_file: .env
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
-      - PYTHONDONTWRITEBYTECODE=1
+      - HOME=/tmp
     volumes:
       - ./src:/app/src
       - ./data:/data
       - ./reports:/reports
+      - ./logs:/logs
     shm_size: "2gb"
     ports:
       - "127.0.0.1:8501:8501"

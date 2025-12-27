@@ -1,7 +1,7 @@
 import os, glob
 import pandas as pd
 import streamlit as st
-from src.config import DATA_DIR
+from .config import DATA_DIR
 
 st.set_page_config(page_title="Trend Monitor", layout="wide")
 st.title("Global Trend Monitor (Demo-safe)")
@@ -12,7 +12,7 @@ if not os.path.exists(DATA_DIR):
 
 files = glob.glob(os.path.join(DATA_DIR, "*.csv"))
 if not files:
-    st.warning("CSV가 없습니다. 먼저 app을 실행하세요.")
+    st.warning("CSV가 없습니다. 먼저 make run 하세요.")
     st.stop()
 
 latest = max(files, key=os.path.getctime)
