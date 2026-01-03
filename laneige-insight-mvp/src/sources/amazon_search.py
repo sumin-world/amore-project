@@ -46,12 +46,38 @@ from src.config import settings
 ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
 
 def _to_float(s: str) -> float:
-    """Convert price string to float, handling Amazon's formatting."""
+    """
+    Convert price string to float, handling Amazon's formatting.
+    
+    Args:
+        s: Price string like "$24.99" or "$1,234.56"
+    
+    Returns:
+        Float value or 0.0 if conversion fails
+    
+    Examples:
+        "$24.99" -> 24.99
+        "$1,234.56" -> 1234.56
+        "N/A" -> 0.0
+    """
     try: return float(s.replace("$","").replace(",","").strip())
     except: return 0.0
 
 def _to_int(s: str) -> int:
-    """Extract integer from review count strings."""
+    """
+    Extract integer from review count strings.
+    
+    Args:
+        s: Review count string like "1,234" or "5,678 ratings"
+    
+    Returns:
+        Integer value or 0 if extraction fails
+    
+    Examples:
+        "1,234" -> 1234
+        "5,678 ratings" -> 5678
+        "N/A" -> 0
+    """
     try:
         s = s.replace(",","")
         m = re.findall(r"\d+", s)

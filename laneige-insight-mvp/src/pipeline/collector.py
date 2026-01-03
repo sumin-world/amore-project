@@ -75,10 +75,17 @@ def save_snapshots(db: Session, items: List, compute_image_hash: bool = True) ->
                 if img_bytes:
                     # Compute perceptual hash for change detection
                     img_phash = phash_from_bytes(img_bytes)
-            except Exception as e:
-                # Log failure but continue - image hash is auxiliary data
-                # Core snapshot can still be saved without it
+            except (IOError, OSError) as e:
+                # Network errors, file system errors
+                print(f"Warning: Image fetch failed for {it.product_id}: {e}")
+                img_phash = ""
+            except ValueError as e:
+                # Invalid image data, corrupted bytes
                 print(f"Warning: Image hash computation failed for {it.product_id}: {e}")
+                img_phash = ""
+            except Exception as e:
+                # Catch-all for unexpected errors (PIL errors, etc.)
+                print(f"Warning: Unexpected error during image processing for {it.product_id}: {e}")
                 img_phash = ""
 
         snap = ProductSnapshot(

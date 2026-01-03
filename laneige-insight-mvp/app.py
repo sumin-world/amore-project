@@ -313,9 +313,8 @@ with col_right:
         st.text_area("Analysis Summary", summary, height=150, disabled=True)
         
         # Extract rank delta from summary for ROI calculation
-        # Extract rank delta from summary for ROI calculation
         delta = 0
-        m = re.search(r"Δ\s*([+\-]?\d+)", summary)
+        m = re.search(r"Δ\s*([+-]?\d+)", summary)
         if m:
             delta = int(m.group(1))
         
