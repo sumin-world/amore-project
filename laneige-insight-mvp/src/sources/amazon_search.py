@@ -1,3 +1,40 @@
+"""
+Amazon Search Results Scraper
+
+This module collects product data from Amazon search result pages.
+It's designed to discover new ASINs automatically by searching for
+brand names or keywords (e.g., "laneige", "k-beauty").
+
+Status: UNFINISHED - Basic implementation complete but needs enhancements
+
+Current Features:
+    - Scrapes Amazon search pages for product listings
+    - Extracts ASIN, title, price, rating, review count, image URL
+    - Deduplicates ASINs within a single page scrape
+    - Supports pagination via URL query parameters
+
+TODO - Future Enhancements:
+    - Add multi-page scraping support (auto-detect and follow pagination)
+    - Implement search query builder for advanced filters
+    - Add support for sponsored vs organic result differentiation
+    - Handle "No results found" and search suggestion pages
+    - Add search result ranking position tracking (beyond single page)
+    - Implement caching to avoid re-scraping recent searches
+    - Add support for international Amazon domains (.co.uk, .co.jp, etc.)
+    - Improve error handling for CAPTCHA and bot detection pages
+
+Design Intentions:
+    - Complement amazon_bestsellers by discovering products outside top 20
+    - Enable keyword-based tracking for brand monitoring
+    - Support competitive analysis by tracking multiple brands
+    - Provide foundation for automated product discovery pipeline
+
+Known Limitations:
+    - Single page scraping only (no automatic pagination)
+    - No handling of sponsored listings separately
+    - Search result order may not reflect actual ranking over time
+    - Rate limiting needed for bulk searches
+"""
 from datetime import datetime
 from typing import List, Set
 from bs4 import BeautifulSoup
@@ -9,10 +46,12 @@ from src.config import settings
 ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
 
 def _to_float(s: str) -> float:
+    """Convert price string to float, handling Amazon's formatting."""
     try: return float(s.replace("$","").replace(",","").strip())
     except: return 0.0
 
 def _to_int(s: str) -> int:
+    """Extract integer from review count strings."""
     try:
         s = s.replace(",","")
         m = re.findall(r"\d+", s)
@@ -22,12 +61,41 @@ def _to_int(s: str) -> int:
 
 class AmazonSearch(Source):
     """
-    Amazon search pages -> collect many ASINs automatically.
-    URL example:
-      https://www.amazon.com/s?k=laneige
-      https://www.amazon.com/s?k=laneige&page=2
+    Scraper for Amazon search result pages.
+    
+    Extracts product data from search listings to enable keyword-based
+    product discovery and brand monitoring beyond Best Sellers lists.
+    
+    URL examples:
+        - https://www.amazon.com/s?k=laneige
+        - https://www.amazon.com/s?k=laneige&page=2
+        - https://www.amazon.com/s?k=korean+beauty+skincare
+    
+    TODO:
+        - Implement pagination support
+        - Add search quality scoring (relevance)
+        - Track sponsored vs organic placement
     """
     def fetch(self, url: str) -> List[ProductItem]:
+        """
+        Fetch and parse Amazon search results page.
+        
+        Args:
+            url: Amazon search URL with query parameters
+        
+        Returns:
+            List of ProductItem objects from search results
+        
+        Notes:
+            - Deduplicates ASINs within the page
+            - Rank reflects order in search results (position on page)
+            - Skips results missing ASIN or title
+        
+        TODO:
+            - Add pagination support to scrape multiple pages
+            - Separate organic vs sponsored results
+            - Add search relevance scoring
+        """
         captured_at = datetime.utcnow()
         items: List[ProductItem] = []
         seen: Set[str] = set()
@@ -36,13 +104,14 @@ class AmazonSearch(Source):
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            # Random sleep delay to avoid bot detection
             time.sleep(settings.request_sleep_sec)
             html = page.content()
             browser.close()
 
         soup = BeautifulSoup(html, "lxml")
 
-        # search result tiles
+        # Search result tiles - standard Amazon search layout
         cards = soup.select('div[data-component-type="s-search-result"]')
         rank = 0
         for card in cards:
