@@ -27,8 +27,10 @@ TODO - Future Enhancements:
     - Add more advanced filtering (date range, multiple ASINs)
     - Add product comparison view (side-by-side)
 """
+import re
 import streamlit as st
 import pandas as pd
+import altair as alt
 from sqlalchemy import select, desc
 from datetime import datetime, timedelta
 from src.db import SessionLocal
@@ -40,15 +42,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Color scheme for consistent minimalist design
-COLORS = {
-    "primary": "#1e3a5f",     # Dark blue for Laneige brand
-    "secondary": "#4a90e2",   # Light blue for accents
-    "success": "#28a745",     # Green for positive metrics
-    "warning": "#ffc107",     # Yellow for alerts
-    "danger": "#dc3545",      # Red for critical issues
-}
 
 st.title("Laneige INSIGHT MVP")
 st.caption("Product Ranking Tracker → Change Detection → AI Analysis + ROI Simulation")
@@ -320,7 +313,7 @@ with col_right:
         st.text_area("Analysis Summary", summary, height=150, disabled=True)
         
         # Extract rank delta from summary for ROI calculation
-        import re
+        # Extract rank delta from summary for ROI calculation
         delta = 0
         m = re.search(r"Δ\s*([+\-]?\d+)", summary)
         if m:
@@ -437,8 +430,6 @@ chart_products = st.multiselect(
 
 if chart_products:
     chart_data = df[df["product_id"].isin(chart_products)].sort_values("captured_at")
-    
-    import altair as alt
     
     # Unified color scheme for charts
     chart = alt.Chart(chart_data).mark_line(point=True, strokeWidth=2).encode(
