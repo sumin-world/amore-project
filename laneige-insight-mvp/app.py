@@ -1,15 +1,71 @@
+"""
+Streamlit Dashboard for Amazon Product Ranking Analysis
+
+This dashboard provides real-time visualization of product ranking changes,
+AI-powered Why Reports, and competitive analysis for K-beauty products.
+
+Features:
+    - Product snapshot table with filtering
+    - Product slider for detailed view
+    - Why Reports with LLM-generated insights
+    - ROI simulator for ranking interventions
+    - Competitive benchmarking across brands
+    - Ranking trend visualization
+    - Demo mode for testing
+
+Layout Philosophy:
+    - Left column: Data tables and product selection (snapshot + slider)
+    - Right column: Analysis and insights (Why Reports + ROI)
+    - Bottom: Competitive analysis and trend charts
+    - Consistent color scheme for minimalist design
+
+TODO - Future Enhancements:
+    - Add CSV/Excel export buttons for reports and snapshots
+    - Implement internationalization (i18n) for multi-language support
+    - Add scheduled data refresh (currently manual cache TTL)
+    - Add alerting system for critical ranking changes
+    - Add more advanced filtering (date range, multiple ASINs)
+    - Add product comparison view (side-by-side)
+"""
+import re
 import streamlit as st
 import pandas as pd
+import altair as alt
 from sqlalchemy import select, desc
 from datetime import datetime, timedelta
 from src.db import SessionLocal
 from src.models import ProductSnapshot, WhyReport
 
-st.set_page_config(page_title="Laneige INSIGHT MVP", layout="wide")
+# Configure page for wide layout and consistent theming
+st.set_page_config(
+    page_title="Laneige INSIGHT MVP", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 st.title("Laneige INSIGHT MVP")
-st.caption("랭킹 스냅샷 → 변화 감지 → Why 리포트 + ROI (데모 모드 포함)")
+st.caption("Product Ranking Tracker → Change Detection → AI Analysis + ROI Simulation")
 
 def roi_calc(delta_rank: int):
+    """
+    Calculate ROI for ranking interventions.
+    
+    Args:
+        delta_rank: Change in ranking position (positive = worse, negative = better)
+    
+    Returns:
+        Tuple of (expected_loss, intervention_cost, expected_gain, roi_percentage)
+    
+    Model Assumptions:
+        - $3,500 weekly sales per ranking position
+        - $8,500 typical intervention cost (coupons, ads, etc.)
+        - Linear relationship between rank and sales (simplification)
+    
+    TODO:
+        - Add configurable parameters via sidebar
+        - Implement non-linear ranking curve (top 10 more valuable)
+        - Add historical validation of ROI predictions
+    """
     sales_per_rank = 3500
     expected_loss = max(0, delta_rank) * sales_per_rank
     coupon_cost = 8500
@@ -19,9 +75,27 @@ def roi_calc(delta_rank: int):
 
 @st.cache_data(ttl=10)
 def load_latest(limit=500):
+    """
+    Load recent product snapshots from database.
+    
+    Args:
+        limit: Maximum number of snapshots to retrieve
+    
+    Returns:
+        DataFrame with snapshot data
+    
+    Notes:
+        - Cached for 10 seconds to reduce database load
+        - Ordered by captured_at descending (newest first)
+        - Converts ORM objects to DataFrame for Streamlit
+    """
     db = SessionLocal()
     try:
-        rows = db.execute(select(ProductSnapshot).order_by(desc(ProductSnapshot.captured_at)).limit(limit)).scalars().all()
+        rows = db.execute(
+            select(ProductSnapshot)
+            .order_by(desc(ProductSnapshot.captured_at))
+            .limit(limit)
+        ).scalars().all()
         return pd.DataFrame([{
             "captured_at": r.captured_at,
             "rank": r.rank,
@@ -39,9 +113,26 @@ def load_latest(limit=500):
 
 @st.cache_data(ttl=10)
 def load_reports(limit=200):
+    """
+    Load Why Reports from database.
+    
+    Args:
+        limit: Maximum number of reports to retrieve
+    
+    Returns:
+        DataFrame with report data
+    
+    Notes:
+        - Cached for 10 seconds to reduce database load
+        - Ordered by created_at descending (newest first)
+    """
     db = SessionLocal()
     try:
-        rows = db.execute(select(WhyReport).order_by(desc(WhyReport.created_at)).limit(limit)).scalars().all()
+        rows = db.execute(
+            select(WhyReport)
+            .order_by(desc(WhyReport.created_at))
+            .limit(limit)
+        ).scalars().all()
         return pd.DataFrame([{
             "created_at": r.created_at,
             "product_id": r.product_id,
@@ -53,6 +144,17 @@ def load_reports(limit=200):
         db.close()
 
 def insert_demo_event(product_id: str, rank_from: int, rank_to: int):
+    """
+    Insert demo ranking change event for testing.
+    
+    Creates two snapshots with 5-minute gap showing ranking change.
+    Used for testing Why Report generation and ROI calculation.
+    
+    Args:
+        product_id: Demo product identifier
+        rank_from: Starting rank position
+        rank_to: Ending rank position
+    """
     now = datetime.utcnow()
     prev_t = now - timedelta(minutes=5)
     curr_t = now
@@ -76,55 +178,173 @@ def insert_demo_event(product_id: str, rank_from: int, rank_to: int):
     finally:
         db.close()
 
-st.sidebar.header("Controls")
-kw = st.sidebar.text_input("Keyword (title)", value="").strip().lower()
-demo_mode = st.sidebar.toggle("Demo mode (하락 이벤트 생성)", value=True)
+# ============================================================================
+# SIDEBAR: Filters and Controls
+# ============================================================================
+st.sidebar.header("🎛️ Filters & Controls")
+
+# Keyword filter (searches in title and ASIN)
+kw = st.sidebar.text_input(
+    "🔍 Search (Title or ASIN)", 
+    value="",
+    placeholder="e.g., laneige, B07KNTK3QG",
+    help="Filter products by keyword in title or ASIN"
+).strip().lower()
+
+# Demo mode toggle
+demo_mode = st.sidebar.toggle(
+    "🧪 Demo Mode", 
+    value=False,
+    help="Enable demo mode to insert test ranking events"
+)
 
 if demo_mode:
-    st.sidebar.subheader("Demo event")
-    demo_pid = st.sidebar.text_input("demo product_id", value="LANEIGE-DEMO-001")
-    r_from = st.sidebar.number_input("rank from", value=3, min_value=1, max_value=100)
-    r_to = st.sidebar.number_input("rank to", value=9, min_value=1, max_value=100)
-    if st.sidebar.button("Insert demo snapshots"):
+    st.sidebar.subheader("Demo Event Generator")
+    demo_pid = st.sidebar.text_input("Product ID", value="LANEIGE-DEMO-001")
+    r_from = st.sidebar.number_input("Rank From", value=3, min_value=1, max_value=100)
+    r_to = st.sidebar.number_input("Rank To", value=9, min_value=1, max_value=100)
+    if st.sidebar.button("📝 Insert Demo Snapshots"):
         insert_demo_event(demo_pid, int(r_from), int(r_to))
-        st.sidebar.success("Inserted. Now run: PYTHONPATH=. python scripts/analyze.py")
+        st.sidebar.success("✅ Demo event inserted!")
+        st.sidebar.info("Run analysis: `PYTHONPATH=. python scripts/analyze.py`")
         st.cache_data.clear()
 
+# Load data
 df = load_latest()
+
+# Apply filters
 if kw:
-    df = df[df["title"].str.lower().str.contains(kw, na=False)].copy()
+    # Search in both title and product_id (ASIN)
+    df = df[
+        df["title"].str.lower().str.contains(kw, na=False) | 
+        df["product_id"].str.lower().str.contains(kw, na=False)
+    ].copy()
 
-c1, c2 = st.columns([2.2, 1])
-with c1:
-    st.subheader("최신 스냅샷")
-    st.dataframe(df.sort_values("captured_at", ascending=False), use_container_width=True, height=520, hide_index=True)
+# ============================================================================
+# MAIN LAYOUT: Left Column (Data) + Right Column (Analysis)
+# ============================================================================
+col_left, col_right = st.columns([1.5, 1])
 
-with c2:
-    st.subheader("Why 리포트")
+with col_left:
+    st.subheader("📊 Product Snapshots")
+    
+    # Display snapshot table
+    if not df.empty:
+        # Format for display
+        display_df = df.copy()
+        display_df["captured_at"] = pd.to_datetime(display_df["captured_at"]).dt.strftime("%m/%d %H:%M")
+        display_df["price"] = display_df["price"].apply(lambda x: f"${x:.2f}")
+        display_df["rating"] = display_df["rating"].apply(lambda x: f"{x:.1f}⭐")
+        display_df["review_count"] = display_df["review_count"].apply(lambda x: f"{x:,}")
+        
+        st.dataframe(
+            display_df[["captured_at", "rank", "product_id", "title", "price", "rating", "review_count"]].sort_values("captured_at", ascending=False),
+            use_container_width=True,
+            height=400,
+            hide_index=True
+        )
+        
+        # Product detail slider
+        st.markdown("---")
+        st.subheader("🔍 Product Detail View")
+        
+        if not df.empty:
+            product_ids = df["product_id"].unique()
+            selected_pid = st.selectbox(
+                "Select Product",
+                product_ids,
+                format_func=lambda x: f"{x} - {df[df['product_id']==x].iloc[0]['title'][:40]}..."
+            )
+            
+            if selected_pid:
+                product_df = df[df["product_id"] == selected_pid].sort_values("captured_at", ascending=False)
+                if not product_df.empty:
+                    latest = product_df.iloc[0]
+                    
+                    # Display metrics in columns
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Current Rank", f"#{latest['rank']}")
+                    m2.metric("Price", f"${latest['price']:.2f}")
+                    m3.metric("Rating", f"{latest['rating']:.1f}⭐")
+                    m4.metric("Reviews", f"{latest['review_count']:,}")
+                    
+                    # Show trend if multiple snapshots
+                    if len(product_df) >= 2:
+                        prev = product_df.iloc[1]
+                        rank_delta = latest['rank'] - prev['rank']
+                        price_delta = latest['price'] - prev['price']
+                        review_delta = latest['review_count'] - prev['review_count']
+                        
+                        st.markdown("**Recent Change:**")
+                        change_cols = st.columns(3)
+                        change_cols[0].metric("Rank Change", f"{rank_delta:+d}", delta_color="inverse")
+                        change_cols[1].metric("Price Change", f"${price_delta:+.2f}", delta_color="off")
+                        change_cols[2].metric("Review Growth", f"{review_delta:+,d}")
+    else:
+        st.info("No data found. Run data collection first:\n`PYTHONPATH=. python scripts/collect.py --source amazon_product`")
+
+with col_right:
+    st.subheader("📋 Why Reports")
+    
     rep = load_reports()
     if rep.empty:
-        st.info("리포트 없음. 먼저 analyze 실행: PYTHONPATH=. python scripts/analyze.py")
+        st.info("No reports yet. Generate analysis:\n`PYTHONPATH=. python scripts/analyze.py`")
     else:
-        st.dataframe(rep[["created_at","product_id","window_start","window_end"]], use_container_width=True, height=220, hide_index=True)
-        idx = st.selectbox("리포트 선택", list(rep.index), index=0)
+        # Display report summary table
+        report_display = rep.copy()
+        report_display["created_at"] = pd.to_datetime(report_display["created_at"]).dt.strftime("%m/%d %H:%M")
+        
+        st.dataframe(
+            report_display[["created_at", "product_id"]].head(10),
+            use_container_width=True,
+            height=180,
+            hide_index=True
+        )
+        
+        # Report selector
+        idx = st.selectbox(
+            "Select Report",
+            list(rep.index),
+            format_func=lambda x: f"{rep.loc[x, 'product_id']} - {rep.loc[x, 'created_at'].strftime('%m/%d %H:%M')}",
+            index=0
+        )
+        
         summary = rep.loc[idx, "summary"]
-        st.text_area("summary", summary, height=220)
-
-        import re
+        st.text_area("Analysis Summary", summary, height=150, disabled=True)
+        
+        # Extract rank delta from summary for ROI calculation
         delta = 0
-        m = re.search(r"Δ\\s*([+\\-]\\d+)", summary)
+        m = re.search(r"Δ\s*([+-]?\d+)", summary)
         if m:
             delta = int(m.group(1))
-
+        
+        # ROI Simulator
+        st.markdown("---")
+        st.subheader("💰 ROI Simulator")
+        
         loss, cost, gain, roi = roi_calc(delta)
-        st.subheader("ROI 시뮬레이터 (데모)")
-        st.write(f"- 대응 안 하면(추정): 주간 손실 ${loss:,}")
-        st.write(f"- AI 추천 대응 비용(쿠폰 등): ${cost:,}")
-        st.write(f"- 대응 시 주간 개선(추정): ${gain:,}")
-        st.write(f"- ROI: {roi}%")
-st.header("🔥 경쟁사 전쟁 모니터 (K-뷰티)")
+        
+        roi_cols = st.columns(2)
+        with roi_cols[0]:
+            st.metric("Weekly Loss (No Action)", f"${loss:,}", delta=None)
+            st.metric("Intervention Cost", f"${cost:,}", delta=None)
+        with roi_cols[1]:
+            st.metric("Expected Gain", f"${gain:,}", delta=None)
+            st.metric("ROI", f"{roi}%", delta=None)
+        
+        if roi > 100:
+            st.success(f"✅ High ROI: Intervention recommended!")
+        elif roi > 0:
+            st.info(f"ℹ️ Positive ROI: Consider intervention")
+        else:
+            st.warning(f"⚠️ Negative ROI: Monitor situation")
 
-# 브랜드별 최신 데이터 집계
+# ============================================================================
+# COMPETITIVE ANALYSIS SECTION
+# ============================================================================
+st.markdown("---")
+st.header("🏆 Competitive Analysis (K-Beauty)")
+
 brands = ["Laneige", "COSRX", "Innisfree", "Etude House"]
 comp_data = []
 
@@ -134,13 +354,13 @@ for brand in brands:
     if brand_df.empty:
         continue
     
-    # 각 제품의 최신 스냅샷만
+    # Get latest snapshot for each product
     for pid in brand_df["product_id"].unique():
         product_df = brand_df[brand_df["product_id"] == pid].sort_values("captured_at", ascending=False)
         if not product_df.empty:
             row = product_df.iloc[0]
             
-            # 랭킹 추세 (최근 2개 스냅샷 비교)
+            # Calculate trend
             trend = "→"
             if len(product_df) >= 2:
                 prev_rank = product_df.iloc[1]["rank"]
@@ -151,66 +371,91 @@ for brand in brands:
                     trend = "↓"
             
             comp_data.append({
-                "브랜드": brand,
-                "제품": row["title"][:35] + "..." if len(row["title"]) > 35 else row["title"],
-                "랭킹": f"{row['rank']:,}" if row['rank'] > 0 else "N/A",
-                "추세": trend,
-                "가격": f"${row['price']:.2f}",
-                "평점": f"{row['rating']:.1f}",
-                "리뷰": f"{row['review_count']:,}",
-                "업데이트": row["captured_at"].strftime("%m/%d %H:%M"),
+                "Brand": brand,
+                "Product": row["title"][:40] + "..." if len(row["title"]) > 40 else row["title"],
+                "Rank": f"#{row['rank']}" if row['rank'] > 0 else "N/A",
+                "Trend": trend,
+                "Price": f"${row['price']:.2f}",
+                "Rating": f"{row['rating']:.1f}⭐",
+                "Reviews": f"{row['review_count']:,}",
+                "Updated": row["captured_at"].strftime("%m/%d %H:%M"),
             })
 
 if comp_data:
     comp_df = pd.DataFrame(comp_data)
     
-    # 브랜드별 색상 구분
-    def highlight_brand(row):
-        if "Laneige" in row["브랜드"]:
-            return ['background-color: #1e3a5f'] * len(row)
-        return [''] * len(row)
-    
     st.dataframe(
         comp_df,
         use_container_width=True,
-        height=400,
+        height=350,
         hide_index=True,
     )
     
-    # 간단한 인사이트
-    laneige_avg_rank = comp_df[comp_df["브랜드"] == "Laneige"]["랭킹"].apply(lambda x: int(x.replace(",", "")) if x != "N/A" else 9999).mean()
-    competitor_avg_rank = comp_df[comp_df["브랜드"] != "Laneige"]["랭킹"].apply(lambda x: int(x.replace(",", "")) if x != "N/A" else 9999).mean()
+    # Competitive metrics
+    laneige_ranks = comp_df[comp_df["Brand"] == "Laneige"]["Rank"].apply(
+        lambda x: int(x.replace("#", "")) if x != "N/A" else 9999
+    )
+    competitor_ranks = comp_df[comp_df["Brand"] != "Laneige"]["Rank"].apply(
+        lambda x: int(x.replace("#", "")) if x != "N/A" else 9999
+    )
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Laneige 평균 랭킹", f"{laneige_avg_rank:,.0f}")
-    c2.metric("경쟁사 평균 랭킹", f"{competitor_avg_rank:,.0f}")
+    laneige_avg = laneige_ranks.mean() if len(laneige_ranks) > 0 else 0
+    competitor_avg = competitor_ranks.mean() if len(competitor_ranks) > 0 else 0
     
-    if laneige_avg_rank < competitor_avg_rank:
-        c3.success("✅ Laneige 우위")
-    else:
-        c3.warning("⚠️ 경쟁사 우위")
+    metric_cols = st.columns(3)
+    metric_cols[0].metric("Laneige Avg Rank", f"#{laneige_avg:.0f}" if laneige_avg > 0 else "N/A")
+    metric_cols[1].metric("Competitor Avg Rank", f"#{competitor_avg:.0f}" if competitor_avg > 0 else "N/A")
+    
+    if laneige_avg > 0 and competitor_avg > 0:
+        if laneige_avg < competitor_avg:
+            metric_cols[2].success("✅ Laneige Leading")
+        else:
+            metric_cols[2].warning("⚠️ Competitors Leading")
 else:
-    st.info("먼저 amazon_product 모드로 데이터 수집: `PYTHONPATH=. python scripts/collect.py --source amazon_product`")
+    st.info("No competitive data available. Collect data using:\n`PYTHONPATH=. python scripts/collect.py --source amazon_product`")
 
-# 랭킹 추이 차트 (선택)
-st.subheader("📈 랭킹 추이 (최근 10회)")
+# ============================================================================
+# RANKING TREND CHART
+# ============================================================================
+st.markdown("---")
+st.subheader("📈 Ranking Trend Chart")
 
 chart_products = st.multiselect(
-    "제품 선택",
-    df["product_id"].unique()[:5],  # 상위 5개만 표시
-    default=[]
+    "Select Products to Compare",
+    df["product_id"].unique()[:10] if not df.empty else [],
+    default=[],
+    format_func=lambda x: f"{x} - {df[df['product_id']==x].iloc[0]['title'][:30]}..." if not df.empty else x
 )
 
 if chart_products:
     chart_data = df[df["product_id"].isin(chart_products)].sort_values("captured_at")
     
-    import altair as alt
-    
-    chart = alt.Chart(chart_data).mark_line(point=True).encode(
-        x=alt.X("captured_at:T", title="시간"),
-        y=alt.Y("rank:Q", title="랭킹", scale=alt.Scale(reverse=True)),
-        color="product_id:N",
-        tooltip=["captured_at", "product_id", "rank", "price"]
-    ).properties(height=300)
+    # Unified color scheme for charts
+    chart = alt.Chart(chart_data).mark_line(point=True, strokeWidth=2).encode(
+        x=alt.X("captured_at:T", title="Time", axis=alt.Axis(format="%m/%d %H:%M")),
+        y=alt.Y("rank:Q", title="Ranking Position", scale=alt.Scale(reverse=True)),
+        color=alt.Color("product_id:N", title="Product", scale=alt.Scale(scheme="category10")),
+        tooltip=[
+            alt.Tooltip("captured_at:T", title="Time", format="%m/%d %H:%M"),
+            alt.Tooltip("product_id:N", title="Product"),
+            alt.Tooltip("rank:Q", title="Rank"),
+            alt.Tooltip("price:Q", title="Price", format="$.2f")
+        ]
+    ).properties(
+        height=350
+    ).interactive()
     
     st.altair_chart(chart, use_container_width=True)
+else:
+    st.info("Select products above to view ranking trends over time")
+
+# Footer with usage instructions
+st.markdown("---")
+st.caption("""
+**Usage Instructions:**
+1. Collect data: `PYTHONPATH=. python scripts/collect.py --source amazon_product`
+2. Generate reports: `PYTHONPATH=. python scripts/analyze.py`
+3. View dashboard: `streamlit run app.py`
+
+**TODO:** CSV/Excel export, internationalization (i18n), scheduled data refresh, advanced filtering
+""")
