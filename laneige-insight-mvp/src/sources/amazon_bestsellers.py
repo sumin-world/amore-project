@@ -60,8 +60,10 @@ def _to_float(s: str) -> float:
         "$1,234.56" -> 1234.56
         "N/A" -> 0.0
     """
-    try: return float(s.replace("$","").replace(",","").strip())
-    except: return 0.0
+    try:
+        return float(s.replace("$","").replace(",","").strip())
+    except (ValueError, AttributeError):
+        return 0.0
 
 def _to_int(s: str) -> int:
     """
@@ -82,7 +84,7 @@ def _to_int(s: str) -> int:
         s = s.replace(",","")
         m = re.findall(r"\d+", s)
         return int(m[0]) if m else 0
-    except:
+    except (ValueError, AttributeError, IndexError):
         return 0
 
 class AmazonBestSellers(Source):
@@ -180,8 +182,10 @@ class AmazonBestSellers(Source):
             rating_el = card.select_one("span.a-icon-alt")
             rating = 0.0
             if rating_el:
-                try: rating = float(rating_el.get_text(strip=True).split(" ")[0])
-                except: rating = 0.0
+                try:
+                    rating = float(rating_el.get_text(strip=True).split(" ")[0])
+                except (ValueError, IndexError, AttributeError):
+                    rating = 0.0
 
             # Extract review count
             rc_el = card.select_one("a[href*=\"#customerReviews\"] span")

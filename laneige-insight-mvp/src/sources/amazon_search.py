@@ -163,8 +163,10 @@ class AmazonSearch(Source):
             rating_el = card.select_one("span.a-icon-alt")
             rating = 0.0
             if rating_el:
-                try: rating = float(rating_el.get_text(strip=True).split(" ")[0])
-                except: rating = 0.0
+                try:
+                    rating = float(rating_el.get_text(strip=True).split(" ")[0])
+                except (ValueError, IndexError, AttributeError):
+                    rating = 0.0
 
             rc_el = card.select_one('a[href*="#customerReviews"] span')
             review_count = _to_int(rc_el.get_text(strip=True)) if rc_el else 0

@@ -136,7 +136,7 @@ class AmazonProduct(Source):
         if price_el:
             try:
                 price = float(price_el.get_text(strip=True).replace("$","").replace(",",""))
-            except:
+            except (ValueError, AttributeError):
                 pass
         
         # Extract rating
@@ -145,7 +145,7 @@ class AmazonProduct(Source):
         if rating_el:
             try:
                 rating = float(rating_el.get_text(strip=True).split()[0])
-            except:
+            except (ValueError, IndexError, AttributeError):
                 pass
         
         # Extract review count
@@ -155,7 +155,7 @@ class AmazonProduct(Source):
             try:
                 text = review_el.get_text(strip=True).replace(",", "")
                 review_count = int(re.search(r'\d+', text).group())
-            except:
+            except (ValueError, AttributeError):
                 pass
         
         # Extract main product image
