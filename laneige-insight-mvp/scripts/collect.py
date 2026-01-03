@@ -23,17 +23,25 @@ Dependencies:
     - SQLAlchemy: For database operations
 """
 import argparse
+import os
 from src.db import SessionLocal
 from src.sources.amazon_bestsellers import AmazonBestSellers
 from src.sources.amazon_product import AmazonProduct
+from src.sources.amazon_keepa import AmazonKeepa
 from src.pipeline.collector import save_snapshots
 
 SOURCES = {
     "amazon_bestsellers": AmazonBestSellers,
     "amazon_product": AmazonProduct,
+    "amazon_keepa": AmazonKeepa,
 }
 
 def main():
+
+    # Submission-safe guard: disable live collection in demo mode
+    if os.getenv("DEMO_MODE", "").strip().lower() in ("1","true","yes","y","on"):
+        print("[DEMO_MODE] Live collection disabled. Skipping collect.")
+        return
     """
     Main collection function that orchestrates the data gathering pipeline.
     
@@ -66,6 +74,11 @@ def main():
     
     src = SOURCES[args.source]()
     items = src.fetch(args.url)
+
+    if not items:
+        print('[INFO] No items fetched. Skipping snapshot save to preserve existing data.')
+        return
+
     
     if args.keyword.strip():
         kw = args.keyword.strip().lower()
