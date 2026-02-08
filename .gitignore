@@ -1,12 +1,11 @@
 .env
+.venv/
+venv/
+__pycache__/
+*.pyc
 
 data/
 logs/
 reports/
 snapshots/
-
-__pycache__/
-*.pyc
-
-.venv/
-venv/
+local.db

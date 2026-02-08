@@ -1,238 +1,187 @@
 # Laneige INSIGHT MVP
 
-**시장 인사이트 자동화 시스템**  
-랭킹 스냅샷 → 변동 감지 → Why Report 생성 → ROI 시뮬레이션까지 자동화하는 마켓 인텔리전스 도구
+**Automated Market Intelligence for K-Beauty on Amazon**
 
-> 제출/데모는 `DEMO_MODE=1`(샘플 스냅샷 기반)로 안전하게 시연하고,  
-> 실서비스 전환 시에는 Keepa 등 **API 기반 수집**으로 교체하는 것을 전제로 설계했습니다.
+An end-to-end pipeline that captures product ranking snapshots, detects changes, generates AI-powered root-cause reports, and simulates ROI for interventions — all in a single Streamlit dashboard.
 
 ---
 
-## 시스템 구조도
-```
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   Laneige INSIGHT MVP (1-page)                               │
-│                     Ranking Snapshot → Change Detection → Why Report → ROI (Demo Mode)       │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+## Architecture
 
-┌───────────────────────────────┐
-│           Data Sources         │
-│        (src/sources/)          │
-│  - amazon_product  (ASIN)      │
-│  - amazon_bestsellers (Top N)  │
-│  - amazon_search (keyword)     │
-└───────────────┬───────────────┘
-                │  fetch(): ProductItem[]
-                v
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           Collector / Snapshot Ingestion (scripts/collect.py)                │
-│  - optional keyword filter                                                                     │
-│  - image download → pHash(64-bit)                                                              │
-│  - ProductItem → ProductSnapshot                                                               │
-│  - transaction commit (item-level skip on error)                                               │
-│  - DEMO_MODE: live fetch disabled (use stored/sample snapshots)                                │
-└───────────────────────────────┬──────────────────────────────────────────────────────────────┘
-                                │ INSERT
-                                v
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                         Database                                              │
-│  ProductSnapshot                                                                              │
-│   - source, market, category, product_id, captured_at, rank, price, rating, reviews, image_*  │
-│   - INDEX (source, market, category, product_id, captured_at DESC)  → fast "latest 2" query   │
-│                                                                                               │
-│  WhyReport                                                                                    │
-│   - window_start, window_end, summary_text, evidence_json                                     │
-│   - UNIQUE (source, market, category, product_id, window_start, window_end)                   │
-└───────────────────────────────┬──────────────────────────────────────────────────────────────┘
-                                │ SELECT latest 2 snapshots / product
-                                v
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           Detector / Driver Scoring (scripts/analyze.py)                      │
-│  get_recent_pair()                                                                              │
-│   - per product: only latest 2 snapshots (max_gap_hours 적용)                                  │
-│  score_drivers()                                                                               │
-│   - Δrank, Δprice, Δreviews, Δrating, Δimage(pHash XOR-Hamming, threshold)                     │
-│  outputs → evidence for Why Report + ROI                                                       │
-└───────────────────────────────┬──────────────────────────────────────────────────────────────┘
-                                │ build report (with evidence)
-                                v
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                  Why Report Generator (src/pipeline/why.py)                   │
-│  Priority: Groq → Claude → Rule-based fallback                                                  │
-│  - external API failure-safe (pipeline never blocks)                                             │
-│  - upsert_report(): insert/update per time window                                                │
-└───────────────────────────────┬──────────────────────────────────────────────────────────────┘
-                                │ SELECT snapshots + reports
-                                v
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   Dashboard / ROI (Streamlit: app.py)                          │
-│  Left: Snapshot table + product detail (latest vs previous)                                     │
-│  Right: Why Report list + detail                                                                 │
-│  ROI Simulator: Δrank → expected_loss / intervention_cost / expected_gain / ROI% (baseline)     │
-│  Demo Event: synthetic Δrank input → immediate end-to-end test                                  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+Data Sources              Pipeline                    Output
+┌──────────────┐    ┌──────────────────┐    ┌─────────────────────┐
+│ Amazon       │    │ Collector        │    │ Streamlit Dashboard  │
+│  - ASIN list │───>│  snapshot + pHash│───>│  - Snapshot table    │
+│  - Bestseller│    │                  │    │  - Why Reports       │
+│  - Search    │    │ Detector         │    │  - ROI simulator     │
+│  - Keepa API │    │  score_drivers() │    │  - Competitive view  │
+└──────────────┘    │                  │    │  - Trend charts      │
+                    │ Why Report       │    └─────────────────────┘
+                    │  Groq → Claude   │
+                    │  → rule fallback │
+                    └──────────────────┘
 ```
 
----
+### Data Flow
 
-## 문제 정의
-
-글로벌 커머스(Amazon, @COSME 등) 환경에서는 랭킹, 가격, 리뷰 등 핵심 지표가 실시간으로 급변합니다. 
-변동이 발생한 구체적인 원인(Why)을 규명하고, 이에 따른 최적의 대응 전략과 예상 수익(Action/ROI)을 제시하는 '행동 가능한 인사이트(Actionable Insight)'를 신속하게 확보하는 것이 매우 중요합니다.
-
-### 본 MVP의 자동화 범위
-- 스냅샷 저장 (정형화된 제품 지표)
-- 변동 감지 (순위/가격/리뷰/평점/이미지 등)
-- Why Report (원인 추정 + 근거 요약: LLM 또는 룰 기반 fallback)
-- ROI 시뮬레이션 (액션별 기대효과/우선순위)
+1. **Collect** — Scrape or pull product data (rank, price, rating, reviews, thumbnail) and persist as timestamped snapshots with perceptual image hashes.
+2. **Detect** — Compare the two most recent snapshots per product; score each driver (price Δ, review velocity, image change, etc.).
+3. **Explain** — Generate a concise Why Report via LLM (Groq free-tier → Claude → deterministic rules as fallback).
+4. **Simulate** — Estimate weekly loss, intervention cost, expected gain, and ROI%.
 
 ---
 
-## 핵심 기능
+## Key Features
 
-| 모듈 | 설명 |
-|------|------|
-| **Snapshot Collector** | 제품 상태를 주기적/수동으로 수집하여 DB 저장 |
-| **Change Detector** | 최신 vs 이전 스냅샷 비교, 변화 이벤트 생성 |
-| **Why Report** | 변화 요인을 텍스트로 요약 (LLM + 룰 기반 fallback) |
-| **Dashboard** | Streamlit 기반 실시간 모니터링 UI |
-
----
-
-## 프로젝트 구조
-```
-laneige-insight-mvp/
-├── src/
-│   ├── sources/           # 수집 소스 모듈
-│   │   ├── amazon_product.py
-│   │   └── amazon_keepa.py
-│   ├── db.py              # SQLAlchemy 세션
-│   └── models.py          # DB 모델
-├── scripts/
-│   ├── init_db.py         # DB 테이블 생성
-│   ├── collect.py         # 수집 실행
-│   └── analyze.py         # 변동 감지 + Why Report
-├── app.py                 # Streamlit 대시보드
-├── requirements.txt
-├── .env                   # 환경변수
-└── README.md
-```
+| Module | Description |
+|---|---|
+| **Snapshot Collector** | Persists product state with pHash-based image fingerprinting |
+| **Change Detector** | Scores ranking drivers across price, reviews, rating, and thumbnails |
+| **Why Report Generator** | LLM-first with guaranteed rule-based fallback |
+| **ROI Simulator** | Translates rank deltas into dollar-denominated action plans |
+| **Competitive Dashboard** | Side-by-side K-beauty brand comparison (Laneige vs COSRX, Innisfree, Etude House) |
 
 ---
 
-## 빠른 시작 (데모 모드)
+## Quick Start
 
-### 1) 환경 설정
+### Prerequisites
+
+- Python 3.10+
+- (Optional) Chromium for Playwright — only needed for live scraping
+
+### 1. Install
+
 ```bash
 cd laneige-insight-mvp
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2) 환경변수 설정
+### 2. Configure
+
 ```bash
-cat > .env << 'EOF'
-DATABASE_URL=sqlite:///./app.db
-DEMO_MODE=1
-EOF
+cp .env.example .env
+# edit .env — at minimum set DATABASE_URL
 ```
 
-### 3) DB 초기화
+### 3. Initialize Database
+
 ```bash
-python -m scripts.init_db
+PYTHONPATH=. python scripts/init_db.py
 ```
 
-### 4) 데모 실행 (샘플 데이터 기반)
+### 4. Run (Demo Mode)
 
-**방법 A: 자동 스크립트**
 ```bash
 bash run_demo.sh
-```
-
-**방법 B: 수동 실행**
-```bash
-PYTHONPATH=. python scripts/analyze.py
+# or manually:
+DEMO_MODE=1 PYTHONPATH=. python scripts/analyze.py
 streamlit run app.py --server.port 8502
 ```
 
-브라우저에서 `http://localhost:8502` 접속
+Open `http://localhost:8502`.
 
----
+### 5. Run (Live Collection)
 
-## 실시간 수집 (선택)
-
-> **주의**: 외부 커머스 직접 크롤링은 캡차/약관 위반 가능성이 있습니다.  
-> 실운영 전환 시 API 계약/정책 준수 전제 하에 collector만 교체하는 것을 권장합니다.
-
-### Keepa API 사용 (선택)
 ```bash
-cat >> .env << 'EOF'
-KEEPA_API_KEY=YOUR_KEY
-DEMO_MODE=0
-EOF
+# Collect from curated ASIN list
+PYTHONPATH=. python scripts/collect.py --source amazon_product
 
-set -a; source .env; set +a
-PYTHONPATH=. python scripts/collect.py --source amazon_keepa
+# Or from Bestsellers page
+PYTHONPATH=. python scripts/collect.py --source amazon_bestsellers \
+  --url "https://www.amazon.com/gp/bestsellers/beauty/..."
+
+# Analyze and generate reports
 PYTHONPATH=. python scripts/analyze.py
-streamlit run app.py --server.port 8502
-```
 
-### LLM 기반 Why Report (선택)
-```bash
-pip install groq
-
-cat >> .env << 'EOF'
-GROQ_API_KEY=YOUR_KEY
-EOF
-
-set -a; source .env; set +a
-PYTHONPATH=. python scripts/analyze.py
-```
-
-> LLM 키가 없으면 룰 기반 fallback으로 동작합니다.
-
----
-
-## 트러블슈팅
-
-### `zsh: unknown file attribute: h`
-**원인**: 터미널에 마크다운 링크 형태로 입력  
-**해결**:
-```bash
-# 잘못된 예
-streamlit run [app.py](http://app.py/)
-
-# 올바른 예
+# Launch dashboard
 streamlit run app.py
 ```
 
-### Streamlit 포트가 8501/8502로 다름
-사용 중인 포트 자동 회피가 정상 동작입니다. 포트를 고정하려면:
-```bash
-streamlit run app.py --server.port 8502
+---
+
+## Project Structure
+
+```
+laneige-insight-mvp/
+├── src/
+│   ├── config.py               # Pydantic settings (env validation)
+│   ├── db.py                   # SQLAlchemy engine + session factory
+│   ├── models.py               # ORM models (ProductSnapshot, WhyReport)
+│   ├── sources/
+│   │   ├── base.py             # Abstract Source + ProductItem dataclass
+│   │   ├── amazon_bestsellers.py
+│   │   ├── amazon_product.py   # Direct ASIN tracking with CAPTCHA handling
+│   │   ├── amazon_search.py    # Keyword-based discovery
+│   │   └── amazon_keepa.py     # Keepa API (ToS-friendly alternative)
+│   ├── pipeline/
+│   │   ├── collector.py        # Snapshot persistence + image hashing
+│   │   ├── detector.py         # Change detection + driver scoring
+│   │   └── why.py              # Report generation (LLM + fallback)
+│   └── utils/
+│       └── images.py           # pHash computation + image fetching
+├── scripts/
+│   ├── init_db.py              # Create tables
+│   ├── collect.py              # Data collection CLI
+│   └── analyze.py              # Analysis + report generation
+├── app.py                      # Streamlit dashboard
+├── run_demo.sh                 # One-command demo launcher
+├── requirements.txt
+└── .env.example
 ```
 
-### `RuntimeError: DATABASE_URL empty`
-`.env`에 `DATABASE_URL`이 있는지 확인:
-```bash
-cat > .env << 'EOF'
-DATABASE_URL=sqlite:///./app.db
-EOF
-```
+---
 
-### `sqlite3.OperationalError: no such table: product_snapshots`
-DB 초기화를 다시 실행:
-```bash
-python -m scripts.init_db
-```
+## Configuration
 
-### `Playwright Executable doesn't exist`
-(실시간 수집 사용 시)
-```bash
-python -m playwright install chromium
-```
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | — | SQLAlchemy connection string |
+| `REQUEST_SLEEP_SEC` | | `1.2` | Delay between HTTP requests (seconds) |
+| `USE_GROQ` | | `true` | Enable Groq LLM for reports |
+| `GROQ_API_KEY` | | — | Groq API key (free tier) |
+| `USE_CLAUDE` | | `false` | Enable Claude LLM for reports |
+| `ANTHROPIC_API_KEY` | | — | Anthropic API key |
+| `DEMO_MODE` | | `false` | Disable live collection for safe demos |
 
-### `Saved 0 snapshots`
-**원인**: DEMO_MODE/API키/정책 제한/차단  
-**권장**: 제출(데모 버전)은 `DEMO_MODE=1`로 고정하고 샘플 데이터 기반 시연
+> If no LLM keys are configured, the system uses deterministic rule-based fallback.
+
+---
+
+## Data Sources
+
+| Source | Best For | Notes |
+|---|---|---|
+| `amazon_product` | Focused ASIN tracking | Curated list, tracks BSR + detail metrics |
+| `amazon_bestsellers` | Category overview | Top-20 from any Bestsellers page |
+| `amazon_search` | Brand discovery | Keyword search, experimental |
+| `amazon_keepa` | ToS-friendly collection | Requires Keepa API key |
+
+---
+
+## Technical Highlights
+
+- **Perceptual Hashing (pHash)**: 64-bit image fingerprints detect thumbnail A/B tests and rebranding with a Hamming distance threshold of 10 bits (~15.6% tolerance).
+- **Fault-Tolerant LLM Pipeline**: Groq (free) → Claude (paid) → rule-based, each isolated with independent error handling.
+- **Upsert Logic**: Why Reports are deduplicated by product + time window via unique constraints.
+- **Composite Indexing**: `(source, market, category, product_id, captured_at)` optimizes the primary query path.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `RuntimeError: DATABASE_URL empty` | Set `DATABASE_URL` in `.env` |
+| `no such table: product_snapshots` | Run `PYTHONPATH=. python scripts/init_db.py` |
+| `Playwright Executable doesn't exist` | Run `playwright install chromium` |
+| Bot detection / CAPTCHA | Increase `REQUEST_SLEEP_SEC` or use `amazon_keepa` source |
+| `Saved 0 snapshots` | Check DEMO_MODE, API keys, or network access |
+
+---
+
+## License
+
+See repository root for license information.
