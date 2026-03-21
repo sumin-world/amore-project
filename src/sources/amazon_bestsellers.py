@@ -1,8 +1,9 @@
 """Scraper for Amazon Best Sellers pages using Playwright + BeautifulSoup."""
 
+import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from bs4 import BeautifulSoup
@@ -10,33 +11,20 @@ from playwright.sync_api import sync_playwright
 
 from src.config import settings
 from src.sources.base import Source, ProductItem
+from src.utils.parsing import to_float, to_int
+
+logger = logging.getLogger(__name__)
 
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
-
-
-def _to_float(s: str) -> float:
-    try:
-        return float(s.replace("$", "").replace(",", "").strip())
-    except (ValueError, AttributeError):
-        return 0.0
-
-
-def _to_int(s: str) -> int:
-    try:
-        nums = re.findall(r"\d+", s.replace(",", ""))
-        return int(nums[0]) if nums else 0
-    except (ValueError, AttributeError, IndexError):
-        return 0
 
 
 class AmazonBestSellers(Source):
     """Extract top-20 products from an Amazon Best Sellers page."""
 
     def fetch(self, url: str) -> List[ProductItem]:
-        captured_at = datetime.utcnow()
+        captured_at = datetime.now(timezone.utc)
         items: List[ProductItem] = []
 
-        # Render page with headless Chromium
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
@@ -71,7 +59,7 @@ class AmazonBestSellers(Source):
             price_el = card.select_one(
                 "span.a-price > span.a-offscreen, span.a-color-price"
             )
-            price = _to_float(price_el.get_text(strip=True)) if price_el else 0.0
+            price = to_float(price_el.get_text(strip=True)) if price_el else 0.0
 
             rating = 0.0
             rating_el = card.select_one("span.a-icon-alt")
@@ -82,7 +70,7 @@ class AmazonBestSellers(Source):
                     pass
 
             rc_el = card.select_one('a[href*="#customerReviews"] span')
-            review_count = _to_int(rc_el.get_text(strip=True)) if rc_el else 0
+            review_count = to_int(rc_el.get_text(strip=True)) if rc_el else 0
 
             if not asin or not title:
                 continue
@@ -112,4 +100,5 @@ class AmazonBestSellers(Source):
                 )
             )
 
+        logger.info("Fetched %d products from bestsellers page", len(items))
         return items

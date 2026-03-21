@@ -1,7 +1,7 @@
 """
 Analyze ranking changes and generate Why Reports.
 
-For each product with ≥ 2 recent snapshots, scores ranking drivers
+For each product with >= 2 recent snapshots, scores ranking drivers
 and produces an LLM or rule-based explanation.
 
 Usage:
@@ -9,18 +9,21 @@ Usage:
 """
 
 import json
+import logging
 
 from sqlalchemy import select, desc
 
-from src.db import SessionLocal
+from src.db import get_db
 from src.models import ProductSnapshot
 from src.pipeline.detector import get_recent_pair, score_drivers
 from src.pipeline.why import build_why_report, upsert_report
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
+logger = logging.getLogger(__name__)
+
 
 def main():
-    db = SessionLocal()
-    try:
+    with get_db() as db:
         recent = (
             db.execute(
                 select(ProductSnapshot)
@@ -32,6 +35,7 @@ def main():
         )
 
         seen = set()
+        analyzed = 0
         for s in recent:
             key = (s.source, s.market, s.category, s.product_id)
             if key in seen:
@@ -57,9 +61,10 @@ def main():
                 summary,
                 json.dumps(evidence, ensure_ascii=False),
             )
-            print(f"[OK] {s.product_id}  {prev.rank} → {curr.rank}")
-    finally:
-        db.close()
+            analyzed += 1
+            logger.info("Analyzed %s: rank %d → %d", s.product_id, prev.rank, curr.rank)
+
+        logger.info("Total products analyzed: %d", analyzed)
 
 
 if __name__ == "__main__":

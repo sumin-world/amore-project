@@ -1,6 +1,6 @@
 """ORM models for product snapshots and analysis reports."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer, Float, DateTime, Text, Index, UniqueConstraint
 
@@ -53,7 +53,7 @@ class WhyReport(Base):
     __tablename__ = "why_reports"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     source: Mapped[str] = mapped_column(String(64), index=True)
     market: Mapped[str] = mapped_column(String(32), index=True)

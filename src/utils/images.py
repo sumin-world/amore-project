@@ -17,7 +17,7 @@ def fetch_image_bytes(url: str, timeout_sec: float = 10.0) -> bytes:
     """Download an image with redirect-following and a polite User-Agent."""
     if not url:
         return b""
-    headers = {"User-Agent": "LaneigeInsightBot/0.1 (demo)"}
+    headers = {"User-Agent": "MarketInsightBot/0.1 (demo)"}
     with httpx.Client(timeout=timeout_sec, headers=headers, follow_redirects=True) as c:
         r = c.get(url)
         r.raise_for_status()

@@ -1,0 +1,12 @@
+{
+  "_comment": "Target products for direct ASIN tracking. Edit this file to track different products.",
+  "products": {
+    "B07KNTK3QG": { "brand": "Laneige",     "name": "Water Sleeping Mask" },
+    "B00LUSHW18": { "brand": "Laneige",     "name": "Lip Sleeping Mask" },
+    "B084GYN2K4": { "brand": "Laneige",     "name": "Cream Skin Refiner" },
+    "B00PBX3L7K": { "brand": "COSRX",       "name": "Snail Mucin" },
+    "B016NRXO06": { "brand": "COSRX",       "name": "Low pH Cleanser" },
+    "B07YZ8MJQY": { "brand": "Innisfree",   "name": "Green Tea Serum" },
+    "B01N5SMQM3": { "brand": "Etude House", "name": "SoonJung Toner" }
+  }
+}

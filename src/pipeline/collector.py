@@ -1,21 +1,24 @@
 """Persist ProductItem objects as database snapshots with optional pHash computation."""
 
 import json
+import logging
 from typing import List
 
 from sqlalchemy.orm import Session
 
 from src.models import ProductSnapshot
+from src.sources.base import ProductItem
 from src.utils.images import fetch_image_bytes, phash_from_bytes
+
+logger = logging.getLogger(__name__)
 
 
 def save_snapshots(
     db: Session,
-    items: List,
+    items: List[ProductItem],
     compute_image_hash: bool = True,
 ) -> int:
-    """
-    Save a batch of ProductItems to the database.
+    """Save a batch of ProductItems to the database.
 
     Image hash failures are logged but never block the snapshot save.
     All items are committed in a single atomic transaction.
@@ -29,7 +32,7 @@ def save_snapshots(
                 if img_bytes:
                     img_phash = phash_from_bytes(img_bytes)
             except Exception as e:
-                print(f"  [WARN] Image hash failed for {it.product_id}: {e}")
+                logger.warning("Image hash failed for %s: %s", it.product_id, e)
 
         db.add(
             ProductSnapshot(
@@ -52,4 +55,5 @@ def save_snapshots(
         saved += 1
 
     db.commit()
+    logger.info("Saved %d snapshots", saved)
     return saved

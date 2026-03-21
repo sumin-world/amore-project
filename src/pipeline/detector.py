@@ -9,13 +9,16 @@ pHash threshold rationale (64-bit perceptual hash):
 We use >10 bits as the meaningful-change threshold.
 """
 
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, and_, desc
 from sqlalchemy.orm import Session
 
 from src.models import ProductSnapshot
 from src.pipeline.why import compute_image_diff_score
+
+logger = logging.getLogger(__name__)
 
 
 def get_recent_pair(
@@ -27,7 +30,7 @@ def get_recent_pair(
     max_gap_hours: int = 48,
 ):
     """Return (previous, current) snapshots or (None, None) if < 2 exist."""
-    cutoff = datetime.utcnow() - timedelta(hours=max_gap_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_gap_hours)
 
     rows = (
         db.execute(

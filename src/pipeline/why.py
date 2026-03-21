@@ -5,6 +5,7 @@ Priority: Groq (free) → Claude (paid) → deterministic rules.
 Each provider is isolated so one failure never blocks the next.
 """
 
+import logging
 import os
 import json
 from datetime import datetime
@@ -12,6 +13,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from src.models import ProductSnapshot, WhyReport
+
+logger = logging.getLogger(__name__)
 
 
 # ── image diff ───────────────────────────────────────────────────────────
@@ -41,9 +44,9 @@ def _build_prompt(prev: ProductSnapshot, curr: ProductSnapshot, evidence: dict) 
     img = evidence.get("image_diff", {}).get("changed", False)
 
     return (
-        f"Amazon product ranking change analysis:\n\n"
+        f"E-commerce product ranking change analysis:\n\n"
         f"Product: {curr.title}\n"
-        f"ASIN: {curr.product_id}\n"
+        f"ID: {curr.product_id}\n"
         f"Window: {prev.captured_at:%m/%d %H:%M} → {curr.captured_at:%m/%d %H:%M}\n\n"
         f"Changes:\n"
         f"- Rank: #{prev.rank} → #{curr.rank} (Δ {dr:+d})\n"
@@ -78,10 +81,10 @@ def _try_groq(prev, curr, evidence) -> str | None:
             max_tokens=300,
         )
         text = resp.choices[0].message.content.strip()
-        print(f"  [LLM] Groq OK ({len(text)} chars)")
+        logger.info("Groq OK (%d chars)", len(text))
         return text
     except Exception as e:
-        print(f"  [LLM] Groq failed: {e}")
+        logger.warning("Groq failed: %s", e)
         return None
 
 
@@ -99,10 +102,10 @@ def _try_claude(prev, curr, evidence) -> str | None:
             messages=[{"role": "user", "content": _build_prompt(prev, curr, evidence)}],
         )
         text = msg.content[0].text.strip()
-        print(f"  [LLM] Claude OK ({len(text)} chars)")
+        logger.info("Claude OK (%d chars)", len(text))
         return text
     except Exception as e:
-        print(f"  [LLM] Claude failed: {e}")
+        logger.warning("Claude failed: %s", e)
         return None
 
 
@@ -156,7 +159,7 @@ def build_why_report(
         if result:
             return result
 
-    print("  [LLM] Using rule-based fallback")
+    logger.info("Using rule-based fallback")
     return _rule_fallback(prev, curr, evidence)
 
 
@@ -184,7 +187,7 @@ def upsert_report(
         existing.window_end = window_end
         existing.summary = summary
         existing.evidence_json = evidence_json
-        print(f"  [UPDATE] {product_id}")
+        logger.info("Updated report for %s", product_id)
     else:
         db.add(
             WhyReport(
@@ -198,6 +201,6 @@ def upsert_report(
                 evidence_json=evidence_json,
             )
         )
-        print(f"  [INSERT] {product_id}")
+        logger.info("Inserted report for %s", product_id)
 
     db.commit()

@@ -3,8 +3,12 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
-data/
+# Database files (keep data/ dir structure)
+data/*.db
+!data/.gitkeep
+
 logs/
 reports/
 snapshots/

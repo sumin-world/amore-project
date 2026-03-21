@@ -4,7 +4,7 @@ competitive analysis, and ranking trend charts.
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import altair as alt
 import pandas as pd
@@ -16,17 +16,15 @@ from src.models import ProductSnapshot, WhyReport
 
 # ── page config ──────────────────────────────────────────────────────────
 
-st.set_page_config(page_title="Laneige INSIGHT MVP", layout="wide")
-st.title("Laneige INSIGHT MVP")
+st.set_page_config(page_title="Market Intelligence Dashboard", layout="wide")
+st.title("Market Intelligence Dashboard")
 st.caption("Ranking Snapshot → Change Detection → AI Analysis → ROI Simulation")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def roi_calc(delta_rank: int):
-    """Simple linear ROI model: $3,500 weekly sales per rank position, $8,500 intervention cost."""
-    sales_per_rank = 3500
-    cost = 8500
+def roi_calc(delta_rank: int, sales_per_rank: int = 3500, cost: int = 8500):
+    """Linear ROI model: estimated weekly sales per rank position."""
     loss = max(0, delta_rank) * sales_per_rank
     gain = max(0, -delta_rank) * sales_per_rank
     roi = int((gain / cost) * 100) if cost else 0
@@ -98,7 +96,7 @@ def load_reports(limit: int = 200) -> pd.DataFrame:
 
 def insert_demo_event(product_id: str, rank_from: int, rank_to: int):
     """Insert two snapshots 5 min apart to simulate a ranking change."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     db = SessionLocal()
     try:
         for ts, rank, price in [
@@ -113,7 +111,7 @@ def insert_demo_event(product_id: str, rank_from: int, rank_to: int):
                     captured_at=ts,
                     rank=rank,
                     product_id=product_id,
-                    title=f"LANEIGE DEMO ({product_id})",
+                    title=f"Demo Product ({product_id})",
                     product_url="",
                     price=price,
                     rating=4.4,
@@ -134,8 +132,8 @@ st.sidebar.header("Filters & Controls")
 
 kw = (
     st.sidebar.text_input(
-        "Search (Title or ASIN)",
-        placeholder="e.g. laneige, B07KNTK3QG",
+        "Search (Title or Product ID)",
+        placeholder="e.g. sleeping mask, B07KNTK3QG",
     )
     .strip()
     .lower()
@@ -144,7 +142,7 @@ kw = (
 demo_mode = st.sidebar.toggle("Demo Mode", value=False)
 if demo_mode:
     st.sidebar.subheader("Demo Event")
-    demo_pid = st.sidebar.text_input("Product ID", value="LANEIGE-DEMO-001")
+    demo_pid = st.sidebar.text_input("Product ID", value="DEMO-001")
     r_from = st.sidebar.number_input("Rank From", value=3, min_value=1, max_value=100)
     r_to = st.sidebar.number_input("Rank To", value=9, min_value=1, max_value=100)
     if st.sidebar.button("Insert Demo Snapshots"):
@@ -177,7 +175,7 @@ with col_left:
         disp = df.copy()
         disp["captured_at"] = pd.to_datetime(disp["captured_at"]).dt.strftime("%m/%d %H:%M")
         disp["price"] = disp["price"].apply(lambda x: f"${x:.2f}")
-        disp["rating"] = disp["rating"].apply(lambda x: f"{x:.1f}⭐")
+        disp["rating"] = disp["rating"].apply(lambda x: f"{x:.1f}")
         disp["review_count"] = disp["review_count"].apply(lambda x: f"{x:,}")
 
         st.dataframe(
@@ -195,7 +193,7 @@ with col_left:
         sel = st.selectbox(
             "Select product",
             pids,
-            format_func=lambda x: f"{x} — {df[df['product_id']==x].iloc[0]['title'][:40]}…",
+            format_func=lambda x: f"{x} — {df[df['product_id']==x].iloc[0]['title'][:40]}",
         )
         if sel:
             pdf = df[df["product_id"] == sel].sort_values("captured_at", ascending=False)
@@ -203,15 +201,15 @@ with col_left:
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Rank", f"#{latest['rank']}")
             m2.metric("Price", f"${latest['price']:.2f}")
-            m3.metric("Rating", f"{latest['rating']:.1f}⭐")
+            m3.metric("Rating", f"{latest['rating']:.1f}")
             m4.metric("Reviews", f"{latest['review_count']:,}")
 
             if len(pdf) >= 2:
                 prev = pdf.iloc[1]
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Rank Δ", f"{latest['rank'] - prev['rank']:+d}", delta_color="inverse")
-                c2.metric("Price Δ", f"${latest['price'] - prev['price']:+.2f}", delta_color="off")
-                c3.metric("Review Δ", f"{latest['review_count'] - prev['review_count']:+,d}")
+                c1.metric("Rank Delta", f"{latest['rank'] - prev['rank']:+d}", delta_color="inverse")
+                c2.metric("Price Delta", f"${latest['price'] - prev['price']:+.2f}", delta_color="off")
+                c3.metric("Review Delta", f"{latest['review_count'] - prev['review_count']:+,d}")
 
 with col_right:
     st.subheader("Why Reports")
@@ -267,12 +265,17 @@ with col_right:
 # ── competitive analysis ─────────────────────────────────────────────────
 
 st.markdown("---")
-st.header("Competitive Analysis (K-Beauty)")
+st.header("Competitive Analysis")
 
-BRANDS = ["Laneige", "COSRX", "Innisfree", "Etude House"]
+# Dynamically extract brands from category field (e.g. "Target Tracking - BrandName")
+brands_in_data = set()
+if not df.empty and "category" in df.columns:
+    for cat in df["category"].unique():
+        if " - " in cat:
+            brands_in_data.add(cat.split(" - ", 1)[1])
+
 comp_rows = []
-
-for brand in BRANDS:
+for brand in sorted(brands_in_data):
     bdf = df[df["category"].str.contains(brand, na=False)]
     for pid in bdf["product_id"].unique():
         pf = bdf[bdf["product_id"] == pid].sort_values("captured_at", ascending=False)
@@ -285,11 +288,11 @@ for brand in BRANDS:
         comp_rows.append(
             {
                 "Brand": brand,
-                "Product": row["title"][:40] + ("…" if len(row["title"]) > 40 else ""),
+                "Product": row["title"][:40] + ("..." if len(row["title"]) > 40 else ""),
                 "Rank": f"#{row['rank']}" if row["rank"] > 0 else "N/A",
                 "Trend": trend,
                 "Price": f"${row['price']:.2f}",
-                "Rating": f"{row['rating']:.1f}⭐",
+                "Rating": f"{row['rating']:.1f}",
                 "Reviews": f"{row['review_count']:,}",
                 "Updated": row["captured_at"].strftime("%m/%d %H:%M"),
             }
@@ -299,20 +302,24 @@ if comp_rows:
     cdf = pd.DataFrame(comp_rows)
     st.dataframe(cdf, use_container_width=True, height=350, hide_index=True)
 
-    def _avg_rank(brand_filter):
-        ranks = cdf[cdf["Brand"] == brand_filter]["Rank"].apply(
-            lambda x: int(x.replace("#", "")) if x != "N/A" else 9999
-        )
-        return ranks.mean() if len(ranks) else 0
+    # Compare first two brands if available
+    brand_list = sorted(brands_in_data)
+    if len(brand_list) >= 2:
+        def _avg_rank(brand_filter):
+            ranks = cdf[cdf["Brand"] == brand_filter]["Rank"].apply(
+                lambda x: int(x.replace("#", "")) if x != "N/A" else 9999
+            )
+            return ranks.mean() if len(ranks) else 0
 
-    la, ca = _avg_rank("Laneige"), _avg_rank("COSRX")  # representative competitor
-    mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("Laneige Avg Rank", f"#{la:.0f}" if la else "N/A")
-    mc2.metric("Competitor Avg Rank", f"#{ca:.0f}" if ca else "N/A")
-    if la and ca:
-        mc3.success("Laneige leading") if la < ca else mc3.warning("Competitors leading")
+        b1, b2 = brand_list[0], brand_list[1]
+        avg1, avg2 = _avg_rank(b1), _avg_rank(b2)
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric(f"{b1} Avg Rank", f"#{avg1:.0f}" if avg1 else "N/A")
+        mc2.metric(f"{b2} Avg Rank", f"#{avg2:.0f}" if avg2 else "N/A")
+        if avg1 and avg2:
+            mc3.success(f"{b1} leading") if avg1 < avg2 else mc3.warning(f"{b2} leading")
 else:
-    st.info("No competitive data available.")
+    st.info("No competitive data available. Collect data with multiple brands to see analysis.")
 
 
 # ── trend chart ──────────────────────────────────────────────────────────
@@ -323,7 +330,7 @@ st.subheader("Ranking Trend")
 chart_pids = st.multiselect(
     "Products to compare",
     df["product_id"].unique()[:10] if not df.empty else [],
-    format_func=lambda x: f"{x} — {df[df['product_id']==x].iloc[0]['title'][:30]}…" if not df.empty else x,
+    format_func=lambda x: f"{x} — {df[df['product_id']==x].iloc[0]['title'][:30]}" if not df.empty else x,
 )
 
 if chart_pids:
