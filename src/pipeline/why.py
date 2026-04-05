@@ -12,6 +12,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from typing import Optional
+
 from src.models import ProductSnapshot, WhyReport
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ def _build_prompt(prev: ProductSnapshot, curr: ProductSnapshot, evidence: dict) 
 
 # ── LLM providers ───────────────────────────────────────────────────────
 
-def _try_groq(prev, curr, evidence) -> str | None:
+def _try_groq(prev, curr, evidence) -> Optional[str]:
     try:
         from groq import Groq
 
@@ -88,7 +90,7 @@ def _try_groq(prev, curr, evidence) -> str | None:
         return None
 
 
-def _try_claude(prev, curr, evidence) -> str | None:
+def _try_claude(prev, curr, evidence) -> Optional[str]:
     try:
         from anthropic import Anthropic
 

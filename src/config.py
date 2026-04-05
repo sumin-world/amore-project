@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
@@ -45,7 +45,7 @@ class Settings(BaseModel):
 settings = Settings()
 
 
-def load_target_products(path: str | None = None) -> Dict[str, Dict[str, str]]:
+def load_target_products(path: Optional[str] = None) -> Dict[str, Dict[str, str]]:
     """Load target product definitions from a JSON config file.
 
     Falls back to config/products.json in the project root.

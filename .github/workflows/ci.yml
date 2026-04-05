@@ -24,4 +24,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
       - name: Run unit tests
+        env:
+          DATABASE_URL: sqlite+pysqlite:///./data/ci_test.db
         run: python -m pytest tests/ -v --tb=short

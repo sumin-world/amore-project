@@ -21,7 +21,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
@@ -68,7 +68,7 @@ def _looks_like_captcha(html: str) -> bool:
 class AmazonProduct(Source):
     """Configurable ASIN tracking with CAPTCHA detection."""
 
-    def __init__(self, products: Dict[str, Dict[str, str]] | None = None):
+    def __init__(self, products: Optional[Dict[str, Dict[str, str]]] = None):
         config_path = os.getenv("PRODUCTS_CONFIG")
         self.target_products = products or load_target_products(config_path)
 

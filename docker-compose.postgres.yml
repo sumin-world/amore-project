@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: market
+      POSTGRES_PASSWORD: market_dev
+      POSTGRES_DB: market_insight
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U market -d market_insight"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8502:8502"
+    volumes:
+      - ./config:/app/config
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://market:market_dev@db:5432/market_insight
+      - DEMO_MODE=true
+      - REQUEST_SLEEP_SEC=1.2
+      # Uncomment and set API keys for LLM-powered reports:
+      # - USE_GROQ=true
+      # - GROQ_API_KEY=your_key_here
+      # - USE_CLAUDE=false
+      # - ANTHROPIC_API_KEY=your_key_here
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -21,5 +21,8 @@ altair>=5.0.0
 # API sources
 keepa==1.4.0
 
+# PostgreSQL (optional, for production deployment)
+psycopg2-binary==2.9.10
+
 # Testing
 pytest>=8.0.0

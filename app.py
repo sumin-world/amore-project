@@ -317,7 +317,10 @@ if comp_rows:
         mc1.metric(f"{b1} Avg Rank", f"#{avg1:.0f}" if avg1 else "N/A")
         mc2.metric(f"{b2} Avg Rank", f"#{avg2:.0f}" if avg2 else "N/A")
         if avg1 and avg2:
-            mc3.success(f"{b1} leading") if avg1 < avg2 else mc3.warning(f"{b2} leading")
+            if avg1 < avg2:
+                mc3.success(f"{b1} leading")
+            else:
+                mc3.warning(f"{b2} leading")
 else:
     st.info("No competitive data available. Collect data with multiple brands to see analysis.")
 

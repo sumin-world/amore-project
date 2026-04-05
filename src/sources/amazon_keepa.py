@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import keepa
 
@@ -88,7 +88,7 @@ def _extract_bsr(p: Dict[str, Any]) -> int:
 class AmazonKeepa(Source):
     """Configurable ASIN tracking via Keepa API."""
 
-    def __init__(self, products: Dict[str, Dict[str, str]] | None = None):
+    def __init__(self, products: Optional[Dict[str, Dict[str, str]]] = None):
         config_path = os.getenv("PRODUCTS_CONFIG")
         self.target_products = products or load_target_products(config_path)
 
