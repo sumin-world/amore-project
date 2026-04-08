@@ -32,7 +32,7 @@ def compute_image_diff_score(prev: ProductSnapshot, curr: ProductSnapshot) -> di
             "score": round(min(distance / 64.0 * 100, 100), 1),
             "distance": distance,
         }
-    except Exception:
+    except (ValueError, TypeError):
         return {"changed": False, "score": 0, "distance": 0}
 
 

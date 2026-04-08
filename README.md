@@ -2,7 +2,7 @@
 
 **Automated product ranking analysis with change detection, AI-generated reports, and an interactive dashboard.**
 
-Built for the [2026 Amorepacific AI Innovation Challenge](https://amorepacific-ai.notion.site) (AGENT track: Trend Analysis & Content Automation).
+A personal study project exploring automated e-commerce analytics with AI-driven root-cause analysis.
 
 ## Business Context
 
