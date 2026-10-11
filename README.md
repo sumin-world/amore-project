@@ -2,7 +2,7 @@
 
 **Automated product ranking analysis with change detection, AI-generated reports, and an interactive dashboard.**
 
-A personal study project exploring automated e-commerce analytics with AI-driven root-cause analysis.
+A team contest project (Dec 2025 – May 2026) exploring automated e-commerce analytics with AI-driven root-cause analysis.
 
 ## Business Context
 
