@@ -2,7 +2,7 @@
 
 **Automated product ranking analysis with change detection, AI-generated reports, and an interactive dashboard.**
 
-A team contest project (Dec 2025 – May 2026) exploring automated e-commerce analytics with AI-driven root-cause analysis.
+A team entry for the 2026 Amorepacific AI Innovation Challenge (Nov 2025 – Jan 2026), refactored after the competition (Feb – Apr 2026), exploring automated e-commerce analytics with AI-driven root-cause analysis.
 
 ## Business Context
 
